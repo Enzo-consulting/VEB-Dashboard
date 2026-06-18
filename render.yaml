@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: veb-dashboard
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: VEB_TOKEN
+        value: veb-secret-2024
+      - key: NODE_ENV
+        value: production

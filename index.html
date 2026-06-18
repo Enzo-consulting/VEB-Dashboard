@@ -2640,6 +2640,41 @@ function pickCatalogueItem(annonceId) {
 // ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// VEB CLOUD SYNC - Synchronisation multi-postes
+// ═══════════════════════════════════════════════════════════
+const VEB_API_URL = window.location.origin;
+const VEB_API_TOKEN = 'veb-secret-2024';
+function _vebH() { return { 'Content-Type': 'application/json', 'x-veb-token': VEB_API_TOKEN }; }
+async function _syncCRMToCloud() {
+  try { await fetch(VEB_API_URL + '/api/crm', { method: 'PUT', headers: _vebH(), body: JSON.stringify({ clients, devisList, commandesList, annonces }) }); } catch(e) {}
+}
+async function _syncCRMFromCloud() {
+  try {
+    const r = await fetch(VEB_API_URL + '/api/crm', { headers: _vebH(), signal: AbortSignal.timeout(5000) });
+    if (r.ok) { const d = await r.json(); if (d && Array.isArray(d.clients)) { clients = d.clients||[]; devisList = d.devisList||[]; commandesList = d.commandesList||[]; annonces = d.annonces||[]; return true; } }
+  } catch(e) {} return false;
+}
+async function _syncCfgToCloud() {
+  try { const s = localStorage.getItem('veb-cfg'); if (s) await fetch(VEB_API_URL + '/api/cfg', { method: 'PUT', headers: _vebH(), body: s }); } catch(e) {}
+}
+async function _syncCfgFromCloud() {
+  try { const r = await fetch(VEB_API_URL + '/api/cfg', { headers: _vebH(), signal: AbortSignal.timeout(5000) }); if (r.ok) { const d = await r.json(); if (d && Object.keys(d).length > 0) return d; } } catch(e) {} return null;
+}
+const _saveCRM_orig = saveCRM;
+saveCRM = function() { _saveCRM_orig(); _syncCRMToCloud(); };
+const _saveConfig_orig = saveConfig;
+saveConfig = function() { _saveConfig_orig(); _syncCfgToCloud(); };
+const _doLogin_orig = doLogin;
+doLogin = async function() {
+  _doLogin_orig();
+  const ls = document.getElementById('login-screen');
+  if (ls && ls.style.display === 'none') {
+    if (await _syncCRMFromCloud()) { try { localStorage.setItem('veb-crm', JSON.stringify({ clients, devisList, commandesList, annonces })); } catch(e) {} if (typeof renderCRM==='function') renderCRM(); if (typeof refreshBadges==='function') refreshBadges(); }
+    const cfg = await _syncCfgFromCloud(); if (cfg) { try { localStorage.setItem('veb-cfg', JSON.stringify(cfg)); } catch(e) {} if (typeof loadConfig==='function') loadConfig(); }
+  }
+};
 initSwatches();
 </script>
 </body>

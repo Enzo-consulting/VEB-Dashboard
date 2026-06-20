@@ -1272,33 +1272,36 @@
 // ═══════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════
-const USERS = {
-  'veb.admin': { password: 'VEB@2024!', role: 'Administrateur', display: 'Enzo' },
-  'invite': { password: 'invite123', role: 'Invité', display: 'Invité' }
-};
-
-let currentUser = null;
-
-function doLogin() {
+async function doLogin() {
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
-  const errEl = document.getElementById('login-error');
-  if (USERS[u] && USERS[u].password === p) {
-    currentUser = { id: u, ...USERS[u] };
-    errEl.style.display = 'none';
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    document.getElementById('user-display').textContent = currentUser.display;
-    document.getElementById('user-role-label').textContent = currentUser.role;
-    document.getElementById('user-avatar').textContent = currentUser.display[0].toUpperCase();
-    loadConfig();
-    loadLogo();
-    loadCRM();
-    renderDash();
-    refreshBadges();
-  } else {
-    errEl.style.display = 'block';
-    document.getElementById('login-pass').value = '';
+  try {
+    const resp = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      currentUser = { username: u, role: data.role, display: data.display };
+      localStorage.setItem('veb-session', JSON.stringify(currentUser));
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = '';
+      document.getElementById('login-error').style.display = 'none';
+      // Sync data from cloud after login
+      try { await _syncCRMFromCloud(); } catch(e) {}
+      try { await _syncCfgFromCloud(); } catch(e) {}
+      loadConfig();
+      loadLogo();
+      loadCRM();
+      renderDash();
+      refreshBadges();
+    } else {
+      document.getElementById('login-error').style.display = '';
+      document.getElementById('login-pass').focus();
+    }
+  } catch(e) {
+    document.getElementById('login-error').style.display = '';
     document.getElementById('login-pass').focus();
   }
 }
@@ -2666,15 +2669,7 @@ const _saveCRM_orig = saveCRM;
 saveCRM = function() { _saveCRM_orig(); _syncCRMToCloud(); };
 const _saveConfig_orig = saveConfig;
 saveConfig = function() { _saveConfig_orig(); _syncCfgToCloud(); };
-const _doLogin_orig = doLogin;
-doLogin = async function() {
-  _doLogin_orig();
-  const ls = document.getElementById('login-screen');
-  if (ls && ls.style.display === 'none') {
-    if (await _syncCRMFromCloud()) { try { localStorage.setItem('veb-crm', JSON.stringify({ clients, devisList, commandesList, annonces })); } catch(e) {} if (typeof renderCRM==='function') renderCRM(); if (typeof refreshBadges==='function') refreshBadges(); }
-    const cfg = await _syncCfgFromCloud(); if (cfg) { try { localStorage.setItem('veb-cfg', JSON.stringify(cfg)); } catch(e) {} if (typeof loadConfig==='function') loadConfig(); }
-  }
-};
+
 initSwatches();
 </script>
 </body>

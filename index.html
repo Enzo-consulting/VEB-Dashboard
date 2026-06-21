@@ -1286,7 +1286,7 @@ async function doLogin() {
       currentUser = { username: u, role: data.role, display: data.display };
       localStorage.setItem('veb-session', JSON.stringify(currentUser));
       document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('app').style.display = '';
+      document.getElementById('app').style.display = 'block';
       document.getElementById('login-error').style.display = 'none';
       // Sync data from cloud after login
       try { await _syncCRMFromCloud(); } catch(e) {}

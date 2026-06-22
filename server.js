@@ -107,6 +107,6 @@ app.post('/api/translate-text', async (req, res) => {
     console.error('/api/translate-text error:', e);
     res.status(500).json({ error: e.message });
   }
-}););
+});
 
 app.listen(PORT, () => { console.log('VEB Dashboard on port ' + PORT); initData(); });

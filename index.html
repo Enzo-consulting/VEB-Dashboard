@@ -787,18 +787,26 @@
   <div class="notif n-err" id="n-err"><i class="ti ti-alert-triangle"></i><span id="n-err-t"></span></div>
 
   <div class="card" id="import-card">
-    <div class="card-title"><i class="ti ti-language"></i>Traduction intelligente de texte</div>
-    <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Collez ici le texte de l'annonce à traduire (description en langue étrangère, texte copié depuis un site fournisseur...). Les champs titre, description, prix, marque et ville seront <strong>remplis automatiquement</strong>.</p>
-    <textarea id="translate-text" placeholder="Collez ici le texte à traduire et analyser..." style="width:100%;min-height:130px;resize:vertical;font-size:13px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text);font-family:inherit;line-height:1.5;outline:none;transition:border .2s"></textarea>
-    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-primary" onclick="translateText()" id="btn-translate"><i class="ti ti-wand"></i>Traduire &amp; remplir les champs</button>
-      <button class="btn" onclick="document.getElementById('translate-text').value=''" style="color:var(--text2)"><i class="ti ti-eraser"></i>Effacer</button>
+    <div class="card-title"><i class="ti ti-language"></i>Traducteur de texte technique</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Collez le texte original (polonais, allemand, anglais…), obtenez la traduction en français technique à droite, puis copiez-la dans votre description.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em">Texte original</label>
+        <textarea id="translate-source" placeholder="Collez ici le texte à traduire..." style="width:100%;min-height:160px;resize:vertical;font-size:13px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text);font-family:inherit;line-height:1.6;outline:none;transition:border .2s" oninput="this.style.borderColor='var(--veb-blue)'"></textarea>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary" onclick="doTranslate()" id="btn-translate" style="flex:1"><i class="ti ti-language"></i>Traduire</button>
+          <button class="btn" onclick="document.getElementById('translate-source').value='';document.getElementById('translate-result').value=''" title="Effacer tout" style="padding:0 10px"><i class="ti ti-eraser"></i></button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em">Traduction française</label>
+          <button class="btn" onclick="copyTranslation()" id="btn-copy" title="Copier la traduction" style="padding:2px 8px;font-size:11px;display:none"><i class="ti ti-copy"></i> Copier</button>
+        </div>
+        <textarea id="translate-result" placeholder="La traduction apparaîtra ici..." readonly style="width:100%;min-height:160px;resize:vertical;font-size:13px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-family:inherit;line-height:1.6;outline:none"></textarea>
+        <div id="translate-prog" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--text2)"><i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i>Traduction en cours...</div>
+      </div>
     </div>
-    <div id="import-prog" style="display:none;margin-top:10px">
-      <div class="prog-bar"><div class="prog-inner" id="import-prog-bar" style="width:0%"></div></div>
-      <span id="import-prog-txt" style="font-size:11px;color:var(--text2)"></span>
-    </div>
-    <div class="info-box" style="margin-top:12px"><i class="ti ti-info-circle"></i>La traduction est effectuée par IA. Vérifiez les champs après remplissage automatique.</div>
   </div>
 
   <div class="card">
@@ -1420,34 +1428,46 @@ function isValidListingUrl(url) {
   return URL_REGEX.test(url.trim());
 }
 
-async function translateText() {
-  const text = document.getElementById('translate-text').value.trim();
-  if (!text) { showNotif('n-err', 'n-err-t', 'Collez d\'abord un texte à traduire.'); return; }
+async function doTranslate() {
+  const src = document.getElementById('translate-source').value.trim();
+  if (!src) { showNotif('n-err', 'n-err-t', 'Collez d\'abord un texte à traduire.'); return; }
   const btn = document.getElementById('btn-translate');
-  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2"></i>Traduction en cours...';
-  showImportProg('Analyse et traduction du texte...', 20);
+  const prog = document.getElementById('translate-prog');
+  const copyBtn = document.getElementById('btn-copy');
+  btn.disabled = true;
+  prog.style.display = 'flex';
+  document.getElementById('translate-result').value = '';
+  copyBtn.style.display = 'none';
   try {
     const res = await fetch('/api/translate-text', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, targetLang: 'fr' })
+      body: JSON.stringify({ text: src, targetLang: 'fr' })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Impossible de traduire ce texte.');
-
-    showImportProg('Remplissage des champs...', 75);
-    await delay(150);
-
-    fillFormFromImport(data);
-
-    showImportProg('Terminé', 100);
-    setTimeout(() => document.getElementById('import-prog').style.display = 'none', 800);
-    showNotif('n-ok', 'n-ok-t', 'Texte traduit et champs remplis. Vérifiez les informations avant publication.');
+    if (!res.ok) throw new Error(data.error || 'Erreur de traduction.');
+    const result = document.getElementById('translate-result');
+    result.value = data.translatedText || src;
+    result.style.borderColor = 'var(--green)';
+    copyBtn.style.display = 'inline-flex';
+    showNotif('n-ok', 'n-ok-t', 'Traduction terminée. Copiez le texte à droite.');
   } catch (e) {
-    showNotif('n-err', 'n-err-t', 'Erreur de traduction : ' + e.message);
-    document.getElementById('import-prog').style.display = 'none';
+    showNotif('n-err', 'n-err-t', 'Erreur : ' + e.message);
   }
-  btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i>Traduire & remplir les champs';
+  btn.disabled = false;
+  prog.style.display = 'none';
+}
+
+function copyTranslation() {
+  const val = document.getElementById('translate-result').value;
+  if (!val) return;
+  navigator.clipboard.writeText(val).then(() => {
+    showNotif('n-ok', 'n-ok-t', 'Traduction copiée dans le presse-papiers !');
+  }).catch(() => {
+    document.getElementById('translate-result').select();
+    document.execCommand('copy');
+    showNotif('n-ok', 'n-ok-t', 'Traduction copiée !');
+  });
 }
 
 function fillFormFromImport(data) {

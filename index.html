@@ -787,17 +787,18 @@
   <div class="notif n-err" id="n-err"><i class="ti ti-alert-triangle"></i><span id="n-err-t"></span></div>
 
   <div class="card" id="import-card">
-    <div class="card-title"><i class="ti ti-link"></i>Import automatique depuis le site constructeur</div>
-    <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Collez le lien de l\'annonce sur le site du fournisseur : le titre, la description, le prix, la marque et les photos sont récupérés et <strong>traduits en français</strong> automatiquement.</p>
-    <div class="flex-row">
-      <input type="text" id="import-url" placeholder="https://www.exemple-constructeur.com/annonce/..." style="flex:1">
-      <button class="btn btn-primary" onclick="importFromUrl()" id="btn-import"><i class="ti ti-download"></i>Importer & traduire</button>
+    <div class="card-title"><i class="ti ti-language"></i>Traduction intelligente de texte</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Collez ici le texte de l'annonce à traduire (description en langue étrangère, texte copié depuis un site fournisseur...). Les champs titre, description, prix, marque et ville seront <strong>remplis automatiquement</strong>.</p>
+    <textarea id="translate-text" placeholder="Collez ici le texte à traduire et analyser..." style="width:100%;min-height:130px;resize:vertical;font-size:13px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text);font-family:inherit;line-height:1.5;outline:none;transition:border .2s"></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="translateText()" id="btn-translate"><i class="ti ti-wand"></i>Traduire &amp; remplir les champs</button>
+      <button class="btn" onclick="document.getElementById('translate-text').value=''" style="color:var(--text2)"><i class="ti ti-eraser"></i>Effacer</button>
     </div>
     <div id="import-prog" style="display:none;margin-top:10px">
       <div class="prog-bar"><div class="prog-inner" id="import-prog-bar" style="width:0%"></div></div>
       <span id="import-prog-txt" style="font-size:11px;color:var(--text2)"></span>
     </div>
-    <div class="info-box" style="margin-top:12px"><i class="ti ti-photo-spark"></i>Les photos importées gardent leur fond et logo génériques. Pour les personnaliser (couleur de fond, position du logo), ouvrez le <a href="#" onclick="goSec('studio');return false;">Studio photo</a>.</div>
+    <div class="info-box" style="margin-top:12px"><i class="ti ti-info-circle"></i>La traduction est effectuée par IA. Vérifiez les champs après remplissage automatique.</div>
   </div>
 
   <div class="card">
@@ -1419,41 +1420,34 @@ function isValidListingUrl(url) {
   return URL_REGEX.test(url.trim());
 }
 
-async function importFromUrl() {
-  const url = document.getElementById('import-url').value.trim();
-  if (!url) { showNotif('n-err', 'n-err-t', 'Collez d\'abord un lien d\'annonce.'); return; }
-  if (!isValidListingUrl(url)) { showNotif('n-err', 'n-err-t', 'Lien invalide. Vérifiez le format de l\'URL (https://...).'); return; }
-  const btn = document.getElementById('btn-import');
-  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Récupération...';
-  showImportProg('Récupération de la page constructeur...', 15);
+async function translateText() {
+  const text = document.getElementById('translate-text').value.trim();
+  if (!text) { showNotif('n-err', 'n-err-t', 'Collez d\'abord un texte à traduire.'); return; }
+  const btn = document.getElementById('btn-translate');
+  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2"></i>Traduction en cours...';
+  showImportProg('Analyse et traduction du texte...', 20);
   try {
-    const res = await fetch('/api/scrape-listing', {
+    const res = await fetch('/api/translate-text', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, targetLang: 'fr' })
+      body: JSON.stringify({ text, targetLang: 'fr' })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Impossible de récupérer cette annonce.');
+    if (!res.ok) throw new Error(data.error || 'Impossible de traduire ce texte.');
 
-    showImportProg('Traduction du contenu en français...', 55);
+    showImportProg('Remplissage des champs...', 75);
     await delay(150);
 
     fillFormFromImport(data);
 
-    if (data.images && data.images.length) {
-      showImportProg('Récupération des photos...', 80);
-      const proxied = data.images.map(img => ({ url: '/api/proxy-image?url=' + encodeURIComponent(img.url || img), name: img.name || 'photo.jpg' }));
-      addStudioImages(proxied);
-    }
-
     showImportProg('Terminé', 100);
     setTimeout(() => document.getElementById('import-prog').style.display = 'none', 800);
-    showNotif('n-ok', 'n-ok-t', 'Annonce importée et traduite. Vérifiez les champs avant publication.' + (data.images && data.images.length ? ' Les photos sont en attente de traitement dans le Studio photo.' : ''));
+    showNotif('n-ok', 'n-ok-t', 'Texte traduit et champs remplis. Vérifiez les informations avant publication.');
   } catch (e) {
-    showNotif('n-err', 'n-err-t', 'Erreur d\'import : ' + e.message);
+    showNotif('n-err', 'n-err-t', 'Erreur de traduction : ' + e.message);
     document.getElementById('import-prog').style.display = 'none';
   }
-  btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i>Importer & traduire';
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i>Traduire & remplir les champs';
 }
 
 function fillFormFromImport(data) {

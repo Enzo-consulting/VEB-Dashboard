@@ -34,10 +34,10 @@ const ADMIN_PASS = process.env.ADMIN_PASS || '';
 const GUEST_USER = process.env.GUEST_USER || '';
 const GUEST_PASS = process.env.GUEST_PASS || '';
 if (username === ADMIN_USER && password === ADMIN_PASS && ADMIN_USER !== '') {
-return res.json({ ok: true, role: 'Administrateur', display: ADMIN_USER });
+return res.json({ ok: true, role: 'Administrateur', display: 'Enzo' });
 }
 if (username === GUEST_USER && password === GUEST_PASS && GUEST_USER !== '') {
-return res.json({ ok: true, role: 'Invite', display: GUEST_USER });
+return res.json({ ok: true, role: 'Collaborateur', display: GUEST_USER });
 }
 return res.status(401).json({ ok: false, error: 'Identifiants incorrects' });
 });
@@ -63,50 +63,57 @@ catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-// ═══════════════════════════════════════════════════════════
 // TRADUCTION INTELLIGENTE DE TEXTE
-// ═══════════════════════════════════════════════════════════
 app.post('/api/translate-text', async (req, res) => {
-  try {
-    const { text, targetLang = 'fr' } = req.body;
-    if (!text || !text.trim()) return res.status(400).json({ error: 'Texte vide.' });
+try {
+const { text, targetLang = 'fr' } = req.body;
+if (!text || !text.trim()) return res.status(400).json({ error: 'Texte vide.' });
 
-    // Tentative de traduction via LibreTranslate (instance publique)
-    const ltEndpoints = [
-      'https://libretranslate.com/translate',
-      'https://translate.argosopentech.com/translate',
-      'https://libretranslate.de/translate'
-    ];
+let translatedText = null;
 
-    let translatedText = null;
-    for (const endpoint of ltEndpoints) {
-      try {
-        const ltRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ q: text, source: 'auto', target: targetLang, format: 'text' }),
-          signal: AbortSignal.timeout(10000)
-        });
-        if (ltRes.ok) {
-          const ltData = await ltRes.json();
-          if (ltData.translatedText) { translatedText = ltData.translatedText; break; }
-        }
-      } catch(e) { continue; }
-    }
+// Tentative 1 : Google Translate API (auto-detection de langue)
+try {
+const gtUrl = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=' + encodeURIComponent(targetLang) + '&dt=t&q=' + encodeURIComponent(text);
+const gtRes = await fetch(gtUrl, { signal: AbortSignal.timeout(10000) });
+if (gtRes.ok) {
+const gtData = await gtRes.json();
+if (Array.isArray(gtData) && Array.isArray(gtData[0])) {
+const parts = gtData[0].filter(s => s && s[0]).map(s => s[0]);
+if (parts.length > 0) translatedText = parts.join('');
+}
+}
+} catch(e) { console.warn('/api/translate-text Google error:', e.message); }
 
-    if (!translatedText) {
-      // Fallback: renvoyer le texte original avec un avertissement
-      return res.status(200).json({
-        translatedText: text,
-        warning: 'Service de traduction indisponible. Texte original retourné.'
-      });
-    }
+// Tentative 2 : MyMemory API (fallback)
+if (!translatedText) {
+const srcLangs = ['en', 'de', 'pl', 'nl', 'es', 'it'];
+for (const src of srcLangs) {
+try {
+const mmUrl = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=' + src + '|' + targetLang;
+const mmRes = await fetch(mmUrl, { signal: AbortSignal.timeout(8000) });
+if (mmRes.ok) {
+const mmData = await mmRes.json();
+if (mmData.responseStatus === 200 && mmData.responseData && mmData.responseData.translatedText && mmData.responseData.translatedText !== text) {
+translatedText = mmData.responseData.translatedText;
+break;
+}
+}
+} catch(e) { continue; }
+}
+}
 
-    res.json({ translatedText });
-  } catch(e) {
-    console.error('/api/translate-text error:', e);
-    res.status(500).json({ error: e.message });
-  }
+if (!translatedText) {
+return res.status(200).json({
+translatedText: text,
+warning: 'Service de traduction indisponible. Texte original retourne.'
+});
+}
+
+res.json({ translatedText });
+} catch(e) {
+console.error('/api/translate-text error:', e);
+res.status(500).json({ error: e.message });
+}
 });
 
 app.listen(PORT, () => { console.log('VEB Dashboard on port ' + PORT); initData(); });

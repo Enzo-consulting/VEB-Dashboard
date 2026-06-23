@@ -69,7 +69,8 @@ try {
 const { text, targetLang = 'fr' } = req.body;
 if (!text || !text.trim()) return res.status(400).json({ error: 'Texte vide.' });
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+const storedCfg = readData().cfg || {};
+const OPENAI_KEY = process.env.OPENAI_API_KEY || storedCfg.openai || '';
 let translatedText = null;
 
 // Tentative 1 : OpenAI GPT avec prompt spécialisé remorques / véhicules utilitaires

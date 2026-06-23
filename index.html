@@ -1242,6 +1242,15 @@
   </div>
 
   <div class="card">
+    <div class="card-title">API OpenAI (traduction intelligente)</div>
+    <div class="form-grid">
+      <div class="fg"><label>Clé API OpenAI</label><input type="password" id="cfg-openai" placeholder="sk-..."></div>
+      <div class="fg"><a class="btn btn-sm btn-outline" href="https://platform.openai.com/api-keys" target="_blank">Obtenir une clé API</a></div>
+    </div>
+    <p class="hint">Modèle gpt-4o-mini — traduction spécialisée secteur remorques &amp; véhicules utilitaires.</p>
+  </div>
+
+  <div class="card">
     <div class="card-title"><i class="ti ti-adjustments"></i>Paramètres par défaut</div>
     <div class="form-grid">
       <div class="fg"><label>Ville / Département par défaut</label><input type="text" id="cfg-ville" placeholder="Lille (59)"></div>
@@ -1996,6 +2005,7 @@ function saveConfig() {
   cfg.wpUser = document.getElementById('wp-user').value.trim();
   cfg.wpPass = document.getElementById('wp-pass').value.trim();
   cfg.clipdrop = document.getElementById('cfg-clipdrop').value.trim();
+  cfg.openai = document.getElementById('cfg-openai').value;
   cfg.ville = document.getElementById('cfg-ville').value.trim();
   cfg.footer = document.getElementById('cfg-footer').value.trim();
   cfg.entreprise = document.getElementById('cfg-entreprise').value.trim();
@@ -2017,6 +2027,7 @@ async function loadConfig() {
       document.getElementById('wp-user').value = cfg.wpUser || '';
       document.getElementById('wp-pass').value = cfg.wpPass || '';
       document.getElementById('cfg-clipdrop').value = cfg.clipdrop || '';
+      document.getElementById('cfg-openai').value = cfg.openai || '';
       document.getElementById('cfg-ville').value = cfg.ville || '';
       document.getElementById('cfg-footer').value = cfg.footer || '';
       document.getElementById('cfg-entreprise').value = cfg.entreprise || '';

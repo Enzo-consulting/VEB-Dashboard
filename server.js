@@ -69,9 +69,37 @@ try {
 const { text, targetLang = 'fr' } = req.body;
 if (!text || !text.trim()) return res.status(400).json({ error: 'Texte vide.' });
 
+const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
 let translatedText = null;
 
-// Tentative 1 : Google Translate API (auto-detection de langue)
+// Tentative 1 : OpenAI GPT avec prompt spécialisé remorques / véhicules utilitaires
+if (OPENAI_KEY) {
+try {
+const systemPrompt = `Tu es un expert traducteur spécialisé dans le secteur des remorques, semi-remorques et véhicules utilitaires. Tu traduis des annonces professionnelles vers le français en utilisant le jargon technique du secteur : PTAC (Poids Total Autorisé en Charge), PTRA, essieu(x), timon, flèche d'attelage, ridelles, hayons, béquilles de stabilisation, châssis, longerons, traverse, bâche, galerie, carrosserie, caisse, plancher, plateau, porte-engins, bétaillère, citerne, frigo, semi, tridem, tandem, rampes d'accès, treuil, sangles d'arrimage, sellette, tourelle, roue de secours, suspension pneumatique, ABS, ralentisseur, boîte de vitesses, couple moteur, heures moteur. Tu produis une traduction naturelle, fluide, adaptée à une publication en français sur un site d'annonces de matériel professionnel. Ne traduis pas mot à mot : réécris de façon professionnelle et commerciale.`;
+const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_KEY },
+body: JSON.stringify({
+model: 'gpt-4o-mini',
+messages: [
+{ role: 'system', content: systemPrompt },
+{ role: 'user', content: 'Traduis ce texte en français : ' + text }
+],
+temperature: 0.3,
+max_tokens: 1000
+}),
+signal: AbortSignal.timeout(20000)
+});
+if (aiRes.ok) {
+const aiData = await aiRes.json();
+const msg = aiData.choices && aiData.choices[0] && aiData.choices[0].message;
+if (msg && msg.content) translatedText = msg.content.trim();
+}
+} catch(e) { console.warn('/api/translate-text OpenAI error:', e.message); }
+}
+
+// Tentative 2 : Google Translate (fallback si pas de clé OpenAI ou erreur)
+if (!translatedText) {
 try {
 const gtUrl = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=' + encodeURIComponent(targetLang) + '&dt=t&q=' + encodeURIComponent(text);
 const gtRes = await fetch(gtUrl, { signal: AbortSignal.timeout(10000) });
@@ -83,23 +111,6 @@ if (parts.length > 0) translatedText = parts.join('');
 }
 }
 } catch(e) { console.warn('/api/translate-text Google error:', e.message); }
-
-// Tentative 2 : MyMemory API (fallback)
-if (!translatedText) {
-const srcLangs = ['en', 'de', 'pl', 'nl', 'es', 'it'];
-for (const src of srcLangs) {
-try {
-const mmUrl = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=' + src + '|' + targetLang;
-const mmRes = await fetch(mmUrl, { signal: AbortSignal.timeout(8000) });
-if (mmRes.ok) {
-const mmData = await mmRes.json();
-if (mmData.responseStatus === 200 && mmData.responseData && mmData.responseData.translatedText && mmData.responseData.translatedText !== text) {
-translatedText = mmData.responseData.translatedText;
-break;
-}
-}
-} catch(e) { continue; }
-}
 }
 
 if (!translatedText) {

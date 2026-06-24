@@ -1,17 +1,18 @@
 {
-  "name": "veb-dashboard",
-  "version": "1.0.0",
-  "description": "VEB Trailers Dashboard - Gestion et Publication",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+    "name": "veb-dashboard",
+    "version": "2.0.0",
+    "description": "VEB Trailers Dashboard - Gestion et Publication (Supabase)",
+    "main": "server.js",
+    "scripts": {
+          "start": "node server.js",
+          "dev": "node server.js"
+    },
+    "dependencies": {
+          "@supabase/supabase-js": "^2.45.0",
+          "cors": "^2.8.5",
+          "express": "^4.18.2"
+    },
+    "engines": {
+          "node": ">=18.0.0"
+    }
 }

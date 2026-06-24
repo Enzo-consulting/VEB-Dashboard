@@ -1742,24 +1742,48 @@ function loadLogoFile(inp) {
   r.onload = e => {
     logoSrc = e.target.result;
     const img = document.getElementById('logo-preview'); img.src = logoSrc; img.style.display = 'block';
-    try { localStorage.setItem('veb-logo', logoSrc); } catch(e) { /* logo trop volumineux pour localStorage, reste en mémoire pour la session */ }
+    try { localStorage.setItem('veb-logo', logoSrc); } catch(e2) {}
+    fetch(VEB_API_URL + '/api/logo', { method: 'PUT', headers: _vebH(), body: JSON.stringify({ logo: logoSrc }) })
+      .catch(e2 => console.warn('[VEB] logo sync:', e2.message));
     showStudioNotif('n-ok', 'Logo chargé : ' + f.name);
   };
   r.readAsDataURL(f);
   inp.value = '';
 }
-
 function loadLogo() {
-  try {
-    const saved = localStorage.getItem('veb-logo');
-    if (saved) {
-      logoSrc = saved;
-      const img = document.getElementById('logo-preview');
-      if (img) { img.src = logoSrc; img.style.display = 'block'; }
-    }
-  } catch(e) {}
+  // Supabase-first : charger depuis /api/logo
+  fetch(VEB_API_URL + '/api/logo', { headers: _vebH() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (d && d.logo) {
+        logoSrc = d.logo;
+        const img = document.getElementById('logo-preview');
+        if (img) { img.src = logoSrc; img.style.display = 'block'; }
+        try { localStorage.setItem('veb-logo', logoSrc); } catch(e) {}
+      } else {
+        // Fallback localStorage
+        try {
+          const saved = localStorage.getItem('veb-logo');
+          if (saved) {
+            logoSrc = saved;
+            const img = document.getElementById('logo-preview');
+            if (img) { img.src = logoSrc; img.style.display = 'block'; }
+          }
+        } catch(e) {}
+      }
+    })
+    .catch(() => {
+      // Fallback localStorage si API inaccessible
+      try {
+        const saved = localStorage.getItem('veb-logo');
+        if (saved) {
+          logoSrc = saved;
+          const img = document.getElementById('logo-preview');
+          if (img) { img.src = logoSrc; img.style.display = 'block'; }
+        }
+      } catch(e) {}
+    });
 }
-
 async function fetchImages() {
   const url = document.getElementById('src-url').value.trim();
   if (!url) { showStudioNotif('n-err', 'Entrez une URL.'); return; }
@@ -2012,47 +2036,42 @@ function saveConfig() {
   cfg.adresseEntreprise = document.getElementById('cfg-adresse').value.trim();
   cfg.siret = document.getElementById('cfg-siret').value.trim();
   cfg.tva = parseFloat(document.getElementById('cfg-tva').value) || 0;
+  // Supabase-first : sauvegarder directement vers /api/cfg
+  fetch(VEB_API_URL + '/api/cfg', { method: 'PUT', headers: _vebH(), body: JSON.stringify(cfg) })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
+    .catch(e => console.warn('[VEB] saveConfig:', e.message));
   try { localStorage.setItem('veb-cfg', JSON.stringify(cfg)); } catch(e){}
   showCfgNotif('n-ok', 'Configuration sauvegardée.');
   updateWPState();
-  _syncCfgToCloud().catch(function(e) { console.warn('[VEB] Sync Cfg cloud:', e); });
 }
-
 async function loadConfig() {
+  // Supabase-first : lire depuis /api/cfg (source de vérité)
   try {
-    const saved = localStorage.getItem('veb-cfg');
-    if (saved) {
-      cfg = { ...cfg, ...JSON.parse(saved) };
-      document.getElementById('wp-url').value = cfg.wpUrl || '';
-      document.getElementById('wp-user').value = cfg.wpUser || '';
-      document.getElementById('wp-pass').value = cfg.wpPass || '';
-      document.getElementById('cfg-clipdrop').value = cfg.clipdrop || '';
-      document.getElementById('cfg-openai').value = cfg.openai || '';
-      document.getElementById('cfg-ville').value = cfg.ville || '';
-      document.getElementById('cfg-footer').value = cfg.footer || '';
-      document.getElementById('cfg-entreprise').value = cfg.entreprise || '';
-      document.getElementById('cfg-adresse').value = cfg.adresseEntreprise || '';
-      document.getElementById('cfg-siret').value = cfg.siret || '';
-      document.getElementById('cfg-tva').value = (cfg.tva !== undefined && cfg.tva !== null) ? cfg.tva : 20;
-      updateWPState();
-    } else {
-      document.getElementById('cfg-entreprise').value = cfg.entreprise || '';
-      document.getElementById('cfg-tva').value = cfg.tva;
-    }
-  } catch(e){}
-  try {
-    const _rc = await fetch(VEB_API_URL + '/api/cfg', { headers: _vebH() });
+    const _rc = await fetch(VEB_API_URL + '/api/cfg', { headers: _vebH(), signal: AbortSignal.timeout(5000) });
     if (_rc.ok) {
       const _dc = await _rc.json();
       if (_dc && !_dc.error && Object.keys(_dc).length > 0) {
         Object.assign(cfg, _dc);
         try { localStorage.setItem('veb-cfg', JSON.stringify(cfg)); } catch(e) {}
-        try { updateWPState(); } catch(e) {}
       }
     }
   } catch(e) { console.warn('[VEB] loadConfig cloud:', e.message); }
+  // Appliquer cfg dans l'UI
+  try {
+    document.getElementById('wp-url').value = cfg.wpUrl || '';
+    document.getElementById('wp-user').value = cfg.wpUser || '';
+    document.getElementById('wp-pass').value = cfg.wpPass || '';
+    document.getElementById('cfg-clipdrop').value = cfg.clipdrop || '';
+    document.getElementById('cfg-openai').value = cfg.openai || '';
+    document.getElementById('cfg-ville').value = cfg.ville || '';
+    document.getElementById('cfg-footer').value = cfg.footer || '';
+    document.getElementById('cfg-entreprise').value = cfg.entreprise || '';
+    document.getElementById('cfg-adresse').value = cfg.adresseEntreprise || '';
+    document.getElementById('cfg-siret').value = cfg.siret || '';
+    document.getElementById('cfg-tva').value = (cfg.tva !== undefined && cfg.tva !== null) ? cfg.tva : 20;
+    updateWPState();
+  } catch(e) {}
 }
-
 // ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
@@ -2097,12 +2116,37 @@ function refreshPreview() {}
 // CRM — PERSISTANCE
 // ═══════════════════════════════════════════════════════════
 function saveCRM() {
-  try {
-    localStorage.setItem('veb-crm', JSON.stringify({ clients, devisList, commandesList, annonces }));
-  } catch (e) {}
-  _syncCRMToCloud().catch(function(e) { console.warn('[VEB] Sync CRM cloud:', e); });
+  // Supabase-first : écrire directement dans Supabase via /api/crm
+  fetch(VEB_API_URL + '/api/crm', {
+    method: 'PUT', headers: _vebH(),
+    body: JSON.stringify({ clients, devisList, commandesList, annonces, _updatedAt: new Date().toISOString() })
+  })
+  .then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    window._vebLastSyncHash = JSON.stringify({ a: annonces.length, c: clients.length, d: devisList.length, cm: commandesList.length, ts: new Date().toISOString().substring(0,16) });
+  })
+  .catch(e => console.warn('[VEB] saveCRM:', e.message));
+  // Cache local pour UI réactive
+  try { localStorage.setItem('veb-crm', JSON.stringify({ clients, devisList, commandesList, annonces })); } catch(e) {}
 }
 async function loadCRM() {
+  // Supabase-first : lire depuis /api/crm (source de vérité absolue)
+  try {
+    const _r = await fetch(VEB_API_URL + '/api/crm', { headers: _vebH(), signal: AbortSignal.timeout(8000) });
+    if (_r.ok) {
+      const _data = await _r.json();
+      if (_data && !_data.error) {
+        annonces      = _data.annonces      || [];
+        clients       = _data.clients       || [];
+        devisList     = _data.devisList     || [];
+        commandesList = _data.commandesList || [];
+        window._vebLastSyncHash = JSON.stringify({ a: annonces.length, c: clients.length, d: devisList.length, cm: commandesList.length, ts: (_data._updatedAt || '').substring(0,16) });
+        try { localStorage.setItem('veb-crm', JSON.stringify({ clients, devisList, commandesList, annonces })); } catch(e) {}
+        return;
+      }
+    }
+  } catch(e) { console.warn('[VEB] loadCRM cloud:', e.message); }
+  // Fallback localStorage uniquement si Supabase est inaccessible
   try {
     const _raw = localStorage.getItem('veb-crm');
     if (_raw) {
@@ -2115,22 +2159,7 @@ async function loadCRM() {
       }
     }
   } catch (e) {}
-  try {
-    const _r = await fetch(VEB_API_URL + '/api/crm', { headers: _vebH() });
-    if (_r.ok) {
-      const _data = await _r.json();
-      if (_data && !_data.error) {
-        annonces      = _data.annonces      || annonces;
-        clients       = _data.clients       || clients;
-        devisList     = _data.devisList     || devisList;
-        commandesList = _data.commandesList || commandesList;
-        try { localStorage.setItem('veb-crm', JSON.stringify({ clients, devisList, commandesList, annonces })); } catch(e) {}
-        window._vebLastSyncHash = JSON.stringify({ a: annonces.length, c: clients.length, d: devisList.length, cm: commandesList.length, ts: (_data._updatedAt || '').substring(0,16) });
-      }
-    }
-  } catch(e) { console.warn('[VEB] loadCRM cloud:', e.message); }
 }
-
 function refreshBadges() {
   const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
   set('nb-cat', annonces.length);
@@ -2741,35 +2770,39 @@ function stopCloudPolling() {
 const VEB_API_URL = window.location.origin;
 const VEB_API_TOKEN = 'veb-secret-2024';
 function _vebH() { return { 'Content-Type': 'application/json', 'x-veb-token': VEB_API_TOKEN }; }
-async function _syncCRMToCloud() {
+
+// Polling Supabase toutes les 30s — détecte les modifications depuis d'autres appareils
+async function _pollCloudSync() {
   try {
-    const _r = await fetch(VEB_API_URL + '/api/crm', {
-      method: 'PUT', headers: _vebH(),
-      body: JSON.stringify({ clients, devisList, commandesList, annonces, _updatedAt: new Date().toISOString() })
-    });
-    if (!_r.ok) throw new Error('HTTP ' + _r.status);
-    window._vebLastSyncHash = JSON.stringify({ a: annonces.length, c: clients.length, d: devisList.length, cm: commandesList.length, ts: new Date().toISOString().substring(0,16) });
-  } catch(e) { console.warn('[VEB] _syncCRMToCloud:', e.message); }
+    const _rp = await fetch(VEB_API_URL + '/api/crm', { headers: _vebH(), signal: AbortSignal.timeout(5000) });
+    if (!_rp.ok) return;
+    const _dp = await _rp.json();
+    const _hash = JSON.stringify({ a: (_dp.annonces||[]).length, c: (_dp.clients||[]).length, d: (_dp.devisList||[]).length, cm: (_dp.commandesList||[]).length, ts: (_dp._updatedAt||'').substring(0,16) });
+    if (_hash !== window._vebLastSyncHash && window._vebLastSyncHash !== '') {
+      annonces = _dp.annonces || annonces; clients = _dp.clients || clients;
+      devisList = _dp.devisList || devisList; commandesList = _dp.commandesList || commandesList;
+      try { localStorage.setItem('veb-crm', JSON.stringify({ clients, devisList, commandesList, annonces })); } catch(e) {}
+      if (typeof renderDash === 'function') renderDash();
+      if (typeof refreshBadges === 'function') refreshBadges();
+      try { renderCat(document.getElementById('cat-search') ? (document.getElementById('cat-search').value||'') : ''); } catch(e) {}
+      try { renderDevis(); } catch(e) {} try { renderCommandes(); } catch(e) {}
+      try { renderClients(''); } catch(e) {}
+    }
+    window._vebLastSyncHash = _hash;
+  } catch(e) {}
 }
-async function _syncCRMFromCloud() {
-  try {
-    const r = await fetch(VEB_API_URL + '/api/crm', { headers: _vebH(), signal: AbortSignal.timeout(5000) });
-    if (r.ok) { const d = await r.json(); if (d && Array.isArray(d.clients)) { clients = d.clients||[]; devisList = d.devisList||[]; commandesList = d.commandesList||[]; annonces = d.annonces||[]; return true; } }
-  } catch(e) {} return false;
+
+function startCloudPolling() {
+  if (window._vebPollInterval) return;
+  window._vebPollInterval = setInterval(_pollCloudSync, 30000);
+  console.log('[VEB] Polling Supabase actif (30s)');
 }
-async function _syncCfgToCloud() {
-  try { const s = localStorage.getItem('veb-cfg'); if (s) await fetch(VEB_API_URL + '/api/cfg', { method: 'PUT', headers: _vebH(), body: s }); } catch(e) {}
+
+function stopCloudPolling() {
+  if (window._vebPollInterval) { clearInterval(window._vebPollInterval); window._vebPollInterval = null; }
 }
-async function _syncCfgFromCloud() {
-  try { const r = await fetch(VEB_API_URL + '/api/cfg', { headers: _vebH(), signal: AbortSignal.timeout(5000) }); if (r.ok) { const d = await r.json(); if (d && Object.keys(d).length > 0) return d; } } catch(e) {} return null;
-}
-const _saveCRM_orig = saveCRM;
-saveCRM = function() { _saveCRM_orig(); _syncCRMToCloud(); };
-const _saveConfig_orig = saveConfig;
-saveConfig = function() { _saveConfig_orig(); _syncCfgToCloud(); };
 
 initSwatches();
-
 </script>
 </body>
 </html>

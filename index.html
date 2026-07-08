@@ -1142,7 +1142,18 @@
       </div>
       <div class="fg">
         <label>Taille de sortie</label>
-        <select id="out-size"><option value="800">800×800 px</option><option value="1000" selected>1000×1000 px</option><option value="1200">1200×1200 px</option></select>
+        <select id="out-size" onchange="toggleCustomSize()">
+          <option value="800">800×800 px</option>
+          <option value="1000" selected>1000×1000 px</option>
+          <option value="1200">1200×1200 px</option>
+          <option value="original">Taille originale</option>
+          <option value="custom">Personnalisé...</option>
+        </select>
+        <div id="custom-size-fields" class="flex-row" style="display:none;margin-top:8px">
+          <input type="number" id="out-w" placeholder="Largeur (px)" min="50" max="8000" style="width:110px">
+          <span style="color:var(--text2)">×</span>
+          <input type="number" id="out-h" placeholder="Hauteur (px)" min="50" max="8000" style="width:110px">
+        </div>
       </div>
     </div>
   </div>
@@ -1852,8 +1863,8 @@ async function startProcessing() {
     setProgress(Math.round(i / toProcess.length * 100));
     setDetail(`Traitement ${i+1}/${toProcess.length} : ${p.name}`);
     try {
-      const { composed, removedBg } = await processStudioImage(p, clipKey);
-      studioResults.push({ name: p.name.replace(/\.[^.]+$/, '') + '_final.jpg', dataUrl: composed, orig: p.url, removedBg });
+      const { composed, removedBg, dims } = await processStudioImage(p, clipKey);
+      studioResults.push({ name: p.name.replace(/\.[^.]+$/, '') + '_final.jpg', dataUrl: composed, orig: p.url, removedBg, dims });
     } catch (e) { showStudioNotif('n-err', 'Erreur sur ' + p.name + ' : ' + e.message); }
   }
   setProgress(100);
@@ -1884,13 +1895,37 @@ async function processStudioImage(p, clipKey) {
   await delay(200);
   setPipeStep(2, 'done', '✓');
   setPipeStep(3, 'running', 'Logo...');
-  const composed = await composeFinal(removedBg, origImg);
+  const dims = resolveOutputDims(origImg);
+  const composed = await composeFinal(removedBg, dims);
   setPipeStep(3, 'done', '✓');
   setPipeStep(4, 'running', 'Export...');
   await delay(100);
   setPipeStep(4, 'done', '✓');
   showCanvasResult(composed);
-  return { composed, removedBg };
+  return { composed, removedBg, dims };
+}
+
+// Détermine les dimensions de sortie selon le choix utilisateur :
+// une taille fixe (800/1000/1200), la taille d'origine de la photo, ou une taille personnalisée.
+function resolveOutputDims(origImg) {
+  const sel = document.getElementById('out-size').value;
+  if (sel === 'original') {
+    const w = (origImg && (origImg.naturalWidth || origImg.width)) || 1000;
+    const h = (origImg && (origImg.naturalHeight || origImg.height)) || 1000;
+    return { w, h };
+  }
+  if (sel === 'custom') {
+    const w = Math.min(8000, Math.max(50, parseInt(document.getElementById('out-w').value) || 1000));
+    const h = Math.min(8000, Math.max(50, parseInt(document.getElementById('out-h').value) || 1000));
+    return { w, h };
+  }
+  const size = parseInt(sel) || 1000;
+  return { w: size, h: size };
+}
+
+function toggleCustomSize() {
+  const sel = document.getElementById('out-size').value;
+  document.getElementById('custom-size-fields').style.display = sel === 'custom' ? 'flex' : 'none';
 }
 
 async function fakeBgRemoval(origImg) {
@@ -1908,26 +1943,27 @@ async function fakeBgRemoval(origImg) {
   return cv.toDataURL('image/png');
 }
 
-async function composeFinal(removedBgSrc, origImg) {
-  const size = parseInt(document.getElementById('out-size').value) || 1000;
-  const cv = document.createElement('canvas'); cv.width = size; cv.height = size;
+async function composeFinal(removedBgSrc, dims) {
+  const W = (dims && dims.w) || 1000, H = (dims && dims.h) || 1000;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = bgColor; ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
   const subj = await loadImg(removedBgSrc);
   const ar = (subj.naturalWidth || subj.width) / (subj.naturalHeight || subj.height);
   const zoom = (parseInt(document.getElementById('subj-zoom').value) || 100) / 100;
-  // Base fit: subject fills the canvas minus a small 7% margin at 100% zoom.
+  // Base fit: subject fills the canvas minus a small 7% margin (of the smaller side) at 100% zoom.
   // The zoom factor then scales the drawn subject directly, so it visibly grows
   // (and can overflow/crop past the canvas edges at high zoom), rather than just
   // trimming an already-small margin.
-  const basePad = size * 0.07;
+  const basePad = Math.min(W, H) * 0.07;
+  const availW = W - basePad*2, availH = H - basePad*2;
   let baseW, baseH;
-  if (ar >= 1) { baseW = size - basePad*2; baseH = baseW/ar; }
-  else { baseH = size - basePad*2; baseW = baseH*ar; }
+  if (ar >= availW/availH) { baseW = availW; baseH = baseW/ar; }
+  else { baseH = availH; baseW = baseH*ar; }
   const sw = baseW * zoom, sh = baseH * zoom;
-  const sx = (size - sw) / 2, sy = (size - sh) / 2;
+  const sx = (W - sw) / 2, sy = (H - sh) / 2;
   ctx.save();
-  ctx.beginPath(); ctx.rect(0, 0, size, size); ctx.clip();
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
   ctx.drawImage(subj, sx, sy, sw, sh);
   ctx.restore();
   if (logoSrc) {
@@ -1935,11 +1971,11 @@ async function composeFinal(removedBgSrc, origImg) {
     const lsize = parseInt(document.getElementById('logo-size').value) / 100;
     const lop = parseInt(document.getElementById('logo-opacity').value) / 100;
     const pos = document.getElementById('logo-pos').value;
-    const lw = size * lsize;
+    const lw = Math.min(W, H) * lsize;
     const lh = lw * (logo.naturalHeight || logo.height) / (logo.naturalWidth || logo.width);
-    const margin = size * 0.04;
-    const lx = pos.includes('r') ? size-lw-margin : pos === 'center' ? (size-lw)/2 : margin;
-    const ly = pos.includes('b') ? size-lh-margin : pos === 'center' ? (size-lh)/2 : margin;
+    const margin = Math.min(W, H) * 0.04;
+    const lx = pos.includes('r') ? W-lw-margin : pos === 'center' ? (W-lw)/2 : margin;
+    const ly = pos.includes('b') ? H-lh-margin : pos === 'center' ? (H-lh)/2 : margin;
     ctx.globalAlpha = lop; ctx.drawImage(logo, lx, ly, lw, lh); ctx.globalAlpha = 1;
   }
   return cv.toDataURL('image/jpeg', 0.93);
@@ -1979,7 +2015,7 @@ async function reapplyZoom() {
   const btn = document.getElementById('btn-rezoom');
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Application...';
   for (const r of studioResults) {
-    if (r.removedBg) r.dataUrl = await composeFinal(r.removedBg, null);
+    if (r.removedBg) r.dataUrl = await composeFinal(r.removedBg, r.dims);
   }
   renderResults();
   if (studioResults[0]) await showCanvasResult(studioResults[0].dataUrl);
